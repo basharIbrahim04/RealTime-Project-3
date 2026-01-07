@@ -91,6 +91,7 @@ typedef struct {
     int consecutive_same_cells;
     Position last_positions[5];
     int last_pos_index;
+    Position preferred_direction; // For intelligent movement
 } FemaleApe;
 
 typedef struct {
@@ -167,6 +168,8 @@ float calculate_territory_overlap(int family1, int family2);
 int get_closest_family_to_position(Position pos);
 bool is_position_in_family_territory(Position pos, int family_id, int territory_radius);
 Position get_best_move_considering_territory(FemaleApe* f, Position* neighbors, int neighbor_count);
+Position get_smart_move(FemaleApe* f, Position* neighbors, int neighbor_count);
+void update_banana_awareness(FemaleApe* f, Position current);
 
 void set_color(Color c) {
     glColor3f(c.r, c.g, c.b);
@@ -436,7 +439,6 @@ void draw_explosion_effect(float x, float y, float size, int timer) {
 // Track which areas have bananas
 void update_banana_awareness(FemaleApe* f, Position current) {
     // Check surrounding 5x5 area for bananas
-    int banana_directions[8] = {0};
     int max_bananas = 0;
     Position best_direction = {-1, -1};
     
@@ -777,6 +779,47 @@ Position get_best_move_considering_territory(FemaleApe* f, Position* neighbors, 
         
         if (maze.cells[pos.x][pos.y].has_obstacle) {
             score -= 100.0f;
+        }
+        
+        if (score > best_score) {
+            best_score = score;
+            best_move = pos;
+        }
+    }
+    
+    return best_move;
+}
+
+Position get_smart_move(FemaleApe* f, Position* neighbors, int neighbor_count) {
+    Position best_move = neighbors[0];
+    float best_score = -1000.0f;
+    
+    for (int i = 0; i < neighbor_count; i++) {
+        Position pos = neighbors[i];
+        float score = 0.0f;
+        
+        // Banana value (highest priority)
+        score += maze.cells[pos.x][pos.y].bananas * 20.0f;
+        
+        // Avoid recently visited cells
+        int visits = f->visited_cells[pos.x][pos.y];
+        score -= visits * 10.0f;
+        
+        // Prefer unexplored areas
+        if (visits == 0) {
+            score += 15.0f;
+        }
+        
+        // When returning home, prioritize moves toward base
+        if (f->collected_bananas >= BANANAS_TO_COLLECT) {
+            int dx = abs(pos.x - f->family_base.x);
+            int dy = abs(pos.y - f->family_base.y);
+            score -= (dx + dy) * 3.0f; // Closer to base is better
+        } else {
+            // When searching, avoid backtracking too much
+            int dx_from_current = abs(pos.x - f->pos.x);
+            int dy_from_current = abs(pos.y - f->pos.y);
+            score += (dx_from_current + dy_from_current) * 0.5f; // Encourage movement
         }
         
         if (score > best_score) {
@@ -1150,6 +1193,7 @@ void move_female_to_position(FemaleApe* f, Position target) {
         f->move_progress = (float)step / animation_steps;
         pthread_mutex_unlock(&display_lock);
         
+        // Use usleep for microsecond delays
         usleep(80000);
     }
     
@@ -2277,6 +2321,21 @@ void init_apes() {
         female_apes[i].display_pos = female_apes[i].family_base;
         female_apes[i].target_pos.x = -1;
         female_apes[i].target_pos.y = -1;
+        female_apes[i].preferred_direction.x = 0;
+        female_apes[i].preferred_direction.y = 0;
+        
+        // Initialize visited cells array
+        female_apes[i].visited_cells = malloc(MAZE_SIZE * sizeof(int*));
+        for (int x = 0; x < MAZE_SIZE; x++) {
+            female_apes[i].visited_cells[x] = malloc(MAZE_SIZE * sizeof(int));
+            for (int y = 0; y < MAZE_SIZE; y++) {
+                female_apes[i].visited_cells[x][y] = 0;
+            }
+        }
+        female_apes[i].visit_threshold = 3;
+        female_apes[i].steps_without_bananas = 0;
+        female_apes[i].consecutive_same_cells = 0;
+        female_apes[i].last_pos_index = 0;
     }
     
     for (int i = 0; i < NUM_BABY_APES; i++) {
@@ -2291,55 +2350,8 @@ void init_apes() {
     for (int i = 0; i < MAX_POPUPS; i++) {
         popups[i].active = false;
     }
-    female_apes[i].visited_cells = malloc(MAZE_SIZE * sizeof(int*));
-    for (int x = 0; x < MAZE_SIZE; x++) {
-        female_apes[i].visited_cells[x] = malloc(MAZE_SIZE * sizeof(int));
-        for (int y = 0; y < MAZE_SIZE; y++) {
-            female_apes[i].visited_cells[x][y] = 0;
-        }
-    }
-    female_apes[i].visit_threshold = 3;
 }
-Position get_smart_move(FemaleApe* f, Position* neighbors, int neighbor_count) {
-    Position best_move = neighbors[0];
-    float best_score = -1000.0f;
-    
-    for (int i = 0; i < neighbor_count; i++) {
-        Position pos = neighbors[i];
-        float score = 0.0f;
-        
-        // Banana value (highest priority)
-        score += maze.cells[pos.x][pos.y].bananas * 20.0f;
-        
-        // Avoid recently visited cells
-        int visits = f->visited_cells[pos.x][pos.y];
-        score -= visits * 10.0f;
-        
-        // Prefer unexplored areas
-        if (visits == 0) {
-            score += 15.0f;
-        }
-        
-        // When returning home, prioritize moves toward base
-        if (f->collected_bananas >= BANANAS_TO_COLLECT) {
-            int dx = abs(pos.x - f->family_base.x);
-            int dy = abs(pos.y - f->family_base.y);
-            score -= (dx + dy) * 3.0f; // Closer to base is better
-        } else {
-            // When searching, avoid backtracking too much
-            int dx_from_current = abs(pos.x - f->pos.x);
-            int dy_from_current = abs(pos.y - f->pos.y);
-            score += (dx_from_current + dy_from_current) * 0.5f; // Encourage movement
-        }
-        
-        if (score > best_score) {
-            best_score = score;
-            best_move = pos;
-        }
-    }
-    
-    return best_move;
-}
+
 void start_simulation() {
     printf("\n===================================================\n");
     printf("    APES COLLECTING BANANAS - SIMULATION START    \n");
@@ -2394,6 +2406,15 @@ void cleanup() {
         free(male_apes[i].basket);
     }
     
+    for (int i = 0; i < NUM_FEMALE_APES; i++) {
+        if (female_apes[i].visited_cells != NULL) {
+            for (int x = 0; x < MAZE_SIZE; x++) {
+                free(female_apes[i].visited_cells[x]);
+            }
+            free(female_apes[i].visited_cells);
+        }
+    }
+    
     free(female_apes);
     free(male_apes);
     free(baby_apes);
@@ -2406,6 +2427,8 @@ void cleanup() {
 }
 
 void keyboard(unsigned char key, int x, int y) {
+    (void)x; (void)y; // Mark parameters as unused
+    
     if (key == 27 || key == 'q' || key == 'Q') {
         printf("\n*** Simulation manually terminated by user ***\n");
         simulation_running = false;
