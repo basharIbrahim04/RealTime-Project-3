@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -75,7 +75,6 @@ typedef struct { MazeCell** cells; int size; } Maze;
 typedef struct { int x, y; } Position;
 typedef struct { int bananas; pthread_mutex_t basket_lock; } Basket;
 
-// SINGLE DEFINITION OF APE STRUCTS
 typedef struct {
     int id, family_id, energy, collected_bananas;
     bool active, resting, moving;
@@ -91,7 +90,7 @@ typedef struct {
     int consecutive_same_cells;
     Position last_positions[5];
     int last_pos_index;
-    Position preferred_direction; // For intelligent movement
+    Position preferred_direction;  // ADD THIS LINE
 } FemaleApe;
 
 typedef struct {
@@ -168,8 +167,6 @@ float calculate_territory_overlap(int family1, int family2);
 int get_closest_family_to_position(Position pos);
 bool is_position_in_family_territory(Position pos, int family_id, int territory_radius);
 Position get_best_move_considering_territory(FemaleApe* f, Position* neighbors, int neighbor_count);
-Position get_smart_move(FemaleApe* f, Position* neighbors, int neighbor_count);
-void update_banana_awareness(FemaleApe* f, Position current);
 
 void set_color(Color c) {
     glColor3f(c.r, c.g, c.b);
@@ -439,6 +436,7 @@ void draw_explosion_effect(float x, float y, float size, int timer) {
 // Track which areas have bananas
 void update_banana_awareness(FemaleApe* f, Position current) {
     // Check surrounding 5x5 area for bananas
+    int banana_directions[8] = {0};
     int max_bananas = 0;
     Position best_direction = {-1, -1};
     
@@ -559,6 +557,35 @@ void draw_female_ape(FemaleApe* f, float base_x, float base_y, float cell_size) 
         sprintf(banana_text, "%d", f->collected_bananas);
         draw_text(screen_x - 4, screen_y - 15, banana_text);
     }
+        float bar_width = cell_size * 0.6f;
+    float bar_height = 3.0f;
+    float bar_x = screen_x - bar_width/2;
+    float bar_y = screen_y + ape_size + 5;
+    
+    // Background (empty bar)
+    glColor3f(0.3f, 0.3f, 0.3f);
+    draw_rect(bar_x, bar_y, bar_width, bar_height);
+    
+    // Foreground (energy level)
+    float energy_ratio = (float)f->energy / FEMALE_ENERGY_MAX;
+    if (energy_ratio > 0.6f) {
+        glColor3f(0.2f, 1.0f, 0.2f); // Green
+    } else if (energy_ratio > 0.3f) {
+        glColor3f(1.0f, 0.8f, 0.2f); // Yellow
+    } else {
+        glColor3f(1.0f, 0.2f, 0.2f); // Red
+    }
+    draw_rect(bar_x, bar_y, bar_width * energy_ratio, bar_height);
+    
+    // Border
+    glColor3f(0.8f, 0.8f, 0.8f);
+    glLineWidth(1.0f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(bar_x, bar_y);
+    glVertex2f(bar_x + bar_width, bar_y);
+    glVertex2f(bar_x + bar_width, bar_y + bar_height);
+    glVertex2f(bar_x, bar_y + bar_height);
+    glEnd();
 }
 
 // SINGLE DEFINITION OF initialize_family_bases
@@ -790,47 +817,6 @@ Position get_best_move_considering_territory(FemaleApe* f, Position* neighbors, 
     return best_move;
 }
 
-Position get_smart_move(FemaleApe* f, Position* neighbors, int neighbor_count) {
-    Position best_move = neighbors[0];
-    float best_score = -1000.0f;
-    
-    for (int i = 0; i < neighbor_count; i++) {
-        Position pos = neighbors[i];
-        float score = 0.0f;
-        
-        // Banana value (highest priority)
-        score += maze.cells[pos.x][pos.y].bananas * 20.0f;
-        
-        // Avoid recently visited cells
-        int visits = f->visited_cells[pos.x][pos.y];
-        score -= visits * 10.0f;
-        
-        // Prefer unexplored areas
-        if (visits == 0) {
-            score += 15.0f;
-        }
-        
-        // When returning home, prioritize moves toward base
-        if (f->collected_bananas >= BANANAS_TO_COLLECT) {
-            int dx = abs(pos.x - f->family_base.x);
-            int dy = abs(pos.y - f->family_base.y);
-            score -= (dx + dy) * 3.0f; // Closer to base is better
-        } else {
-            // When searching, avoid backtracking too much
-            int dx_from_current = abs(pos.x - f->pos.x);
-            int dy_from_current = abs(pos.y - f->pos.y);
-            score += (dx_from_current + dy_from_current) * 0.5f; // Encourage movement
-        }
-        
-        if (score > best_score) {
-            best_score = score;
-            best_move = pos;
-        }
-    }
-    
-    return best_move;
-}
-
 void display() {
     glClear(GL_COLOR_BUFFER_BIT);
     pthread_mutex_lock(&display_lock);
@@ -838,13 +824,20 @@ void display() {
     float cell_size = (float)MAZE_DISPLAY_SIZE / MAZE_SIZE;
     float maze_x = 30, maze_y = 80;
     
+    // ============================================
+    // TITLE
+    // ============================================
     set_color(COLOR_TITLE);
     draw_text_title(WINDOW_WIDTH/2 - 180, 30, "APES COLLECTING BANANAS SIMULATION");
     
+    // ============================================
+    // MAZE RENDERING
+    // ============================================
     for (int i = 0; i < MAZE_SIZE; i++) {
         for (int j = 0; j < MAZE_SIZE; j++) {
             float x = maze_x + j * cell_size, y = maze_y + i * cell_size;
             
+            // Checkerboard pattern
             if ((i + j) % 2 == 0) {
                 set_color_bright(COLOR_MAZE_DARK, 1.0f);
             } else {
@@ -852,13 +845,16 @@ void display() {
             }
             draw_rect(x, y, cell_size, cell_size);
             
-            if (maze.cells[i][j].trail_age > 0 && maze.cells[i][j].trail_family >= 0 && maze.cells[i][j].trail_age < 1000) {
+            // Trail effects
+            if (maze.cells[i][j].trail_age > 0 && maze.cells[i][j].trail_family >= 0 && 
+                maze.cells[i][j].trail_age < 1000) {
                 float fade = maze.cells[i][j].trail_age / 20.0f;
                 Color trail_color = FAMILY_COLORS[maze.cells[i][j].trail_family % 8];
                 set_color_bright(trail_color, 0.2f * fade);
                 draw_rect(x + 2, y + 2, cell_size - 4, cell_size - 4);
             }
             
+            // Grid lines
             set_color((Color){0.2f, 0.2f, 0.25f});
             glLineWidth(1.0f);
             glBegin(GL_LINE_LOOP);
@@ -866,10 +862,13 @@ void display() {
             glVertex2f(x + cell_size, y + cell_size); glVertex2f(x, y + cell_size);
             glEnd();
             
+            // Obstacles
             if (maze.cells[i][j].has_obstacle) {
                 set_color(COLOR_OBSTACLE);
                 draw_rect(x + 2, y + 2, cell_size - 4, cell_size - 4);
-            } else if (maze.cells[i][j].bananas > 0) {
+            } 
+            // Bananas
+            else if (maze.cells[i][j].bananas > 0) {
                 int banana_count = maze.cells[i][j].bananas;
                 float radius = cell_size * 0.2f;
                 
@@ -886,14 +885,19 @@ void display() {
         }
     }
     
+    // ============================================
+    // FAMILY BASES (Home markers)
+    // ============================================
     for (int i = 0; i < NUM_MALE_APES; i++) {
         float base_x = maze_x + family_bases[i].y * cell_size + cell_size/2;
         float base_y = maze_y + family_bases[i].x * cell_size + cell_size/2;
         
+        // Base highlight circle
         Color family_color = FAMILY_COLORS[i % 8];
         set_color_bright(family_color, 0.3f);
         draw_circle(base_x, base_y, cell_size * 0.4f);
         
+        // Base border
         glColor3f(1.0f, 1.0f, 1.0f);
         glLineWidth(2.0f);
         glBegin(GL_LINE_LOOP);
@@ -904,6 +908,7 @@ void display() {
         }
         glEnd();
         
+        // Home icon
         glColor3f(0.2f, 0.8f, 0.2f);
         glBegin(GL_TRIANGLES);
         glVertex2f(base_x, base_y - cell_size*0.2f);
@@ -911,12 +916,16 @@ void display() {
         glVertex2f(base_x + cell_size*0.15f, base_y);
         glEnd();
         
+        // Family label
         glColor3f(1, 1, 1);
         char base_text[10];
-        sprintf(base_text, "Fam %d", i);
-        draw_text(base_x - 12, base_y + 25, base_text);
+        sprintf(base_text, "F%d", i);
+        draw_text(base_x - 6, base_y + 25, base_text);
     }
     
+    // ============================================
+    // FIGHT EFFECTS
+    // ============================================
     if (fight_effect_active && fight_effect_timer > 0) {
         float fight_x = maze_x + fight_location.y * cell_size + cell_size/2;
         float fight_y = maze_y + fight_location.x * cell_size + cell_size/2;
@@ -936,28 +945,170 @@ void display() {
         }
     }
     
+    // ============================================
+    // FEMALE APES WITH ENERGY BARS
+    // ============================================
     for (int i = 0; i < NUM_FEMALE_APES; i++) {
         if (female_apes[i].active && female_apes[i].pos.x >= 0) {
-            draw_female_ape(&female_apes[i], maze_x, maze_y, cell_size);
+            FemaleApe* f = &female_apes[i];
+            
+            // Calculate display position
+            float display_x, display_y;
+            if (f->moving) {
+                float start_x = f->display_pos.x;
+                float start_y = f->display_pos.y;
+                float target_x = f->target_pos.x;
+                float target_y = f->target_pos.y;
+                
+                display_x = start_x + (target_x - start_x) * f->move_progress;
+                display_y = start_y + (target_y - start_y) * f->move_progress;
+            } else {
+                display_x = f->pos.x;
+                display_y = f->pos.y;
+            }
+            
+            float screen_x = maze_x + display_y * cell_size + cell_size/2;
+            float screen_y = maze_y + display_x * cell_size + cell_size/2;
+            
+            // Determine color based on state
+            if (f->resting) {
+                float pulse = 0.7f + 0.3f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.005f);
+                set_family_color(f->family_id, pulse);
+            } else if (f->collected_bananas >= BANANAS_TO_COLLECT) {
+                set_family_color(f->family_id, 1.3f);
+            } else if (f->collected_bananas > 0) {
+                float progress = (float)f->collected_bananas / BANANAS_TO_COLLECT;
+                set_family_color(f->family_id, 0.8f + 0.5f * progress);
+            } else {
+                set_family_color(f->family_id, 1.0f);
+            }
+            
+            // Draw ape body
+            float ape_size = cell_size * 0.35f;
+            if (f->moving) {
+                float squash = 0.9f + 0.1f * sin(f->move_progress * 3.14159f);
+                draw_circle_outlined(screen_x, screen_y, ape_size * squash, f->family_id);
+                
+                // Movement direction indicator
+                if (f->move_progress > 0.1f && f->move_progress < 0.9f) {
+                    float dx = f->target_pos.y - f->display_pos.y;
+                    float dy = f->target_pos.x - f->display_pos.x;
+                    float angle = atan2(dy, dx);
+                    
+                    glColor3f(1, 1, 1);
+                    glBegin(GL_TRIANGLES);
+                    glVertex2f(screen_x + cos(angle) * ape_size*0.8f, 
+                              screen_y + sin(angle) * ape_size*0.8f);
+                    glVertex2f(screen_x + cos(angle + 2.5) * ape_size*0.5f,
+                              screen_y + sin(angle + 2.5) * ape_size*0.5f);
+                    glVertex2f(screen_x + cos(angle - 2.5) * ape_size*0.5f,
+                              screen_y + sin(angle - 2.5) * ape_size*0.5f);
+                    glEnd();
+                }
+            } else {
+                draw_circle_outlined(screen_x, screen_y, ape_size, f->family_id);
+            }
+            
+            // State icon
+            if (f->resting) {
+                draw_rest_icon(screen_x, screen_y - ape_size - 10, 4);
+            } else if (f->collected_bananas >= BANANAS_TO_COLLECT) {
+                draw_home_icon(screen_x, screen_y - ape_size - 10, 6);
+            } else if (f->collected_bananas > 0) {
+                draw_search_icon(screen_x, screen_y - ape_size - 10, 4);
+            }
+            
+            // Target indicator (when moving)
+            if (f->moving && f->target_pos.x >= 0 && f->move_progress < 0.9f) {
+                float target_screen_x = maze_x + f->target_pos.y * cell_size + cell_size/2;
+                float target_screen_y = maze_y + f->target_pos.x * cell_size + cell_size/2;
+                
+                glColor4f(1, 1, 1, 0.6f);
+                glLineWidth(1.5f);
+                glBegin(GL_LINES);
+                glVertex2f(screen_x, screen_y);
+                glVertex2f(target_screen_x, target_screen_y);
+                glEnd();
+                
+                glColor4f(1, 1, 1, 0.3f);
+                draw_rect(maze_x + f->target_pos.y * cell_size + 2,
+                          maze_y + f->target_pos.x * cell_size + 2,
+                          cell_size - 4, cell_size - 4);
+            }
+            
+            // ID label
+            glColor3f(1, 1, 1);
+            char id_text[20];
+            sprintf(id_text, "F%d", f->id);
+            draw_text(screen_x - 6, screen_y + 5, id_text);
+            
+            // Banana count
+            if (f->collected_bananas > 0) {
+                glColor3f(1, 0.9f, 0);
+                char banana_text[10];
+                sprintf(banana_text, "%d", f->collected_bananas);
+                draw_text(screen_x - 4, screen_y - 15, banana_text);
+            }
+            
+            // ============================================
+            // ENERGY BAR (NEW!)
+            // ============================================
+            float bar_width = cell_size * 0.7f;
+            float bar_height = 4.0f;
+            float bar_x = screen_x - bar_width/2;
+            float bar_y = screen_y + ape_size + 8;
+            
+            // Background (empty bar)
+            glColor3f(0.2f, 0.2f, 0.2f);
+            draw_rect(bar_x, bar_y, bar_width, bar_height);
+            
+            // Foreground (energy level)
+            float energy_ratio = (float)f->energy / FEMALE_ENERGY_MAX;
+            if (energy_ratio > 0.6f) {
+                glColor3f(0.2f, 1.0f, 0.2f); // Green (healthy)
+            } else if (energy_ratio > 0.3f) {
+                glColor3f(1.0f, 0.9f, 0.2f); // Yellow (warning)
+            } else {
+                glColor3f(1.0f, 0.2f, 0.2f); // Red (critical)
+            }
+            draw_rect(bar_x, bar_y, bar_width * energy_ratio, bar_height);
+            
+            // Border
+            glColor3f(0.6f, 0.6f, 0.6f);
+            glLineWidth(1.0f);
+            glBegin(GL_LINE_LOOP);
+            glVertex2f(bar_x, bar_y);
+            glVertex2f(bar_x + bar_width, bar_y);
+            glVertex2f(bar_x + bar_width, bar_y + bar_height);
+            glVertex2f(bar_x, bar_y + bar_height);
+            glEnd();
         }
     }
     
-    float stats_x = maze_x + MAZE_DISPLAY_SIZE + 20, stats_y = maze_y;
+    // ============================================
+    // STATISTICS PANEL (RIGHT SIDE)
+    // ============================================
+    float stats_x = maze_x + MAZE_DISPLAY_SIZE + 20;
+    float stats_y = maze_y;
+    float stats_max_y = WINDOW_HEIGHT - 50; // Overflow protection
     
+    // Panel background
     set_color(COLOR_STATS_BG);
-    draw_rect_outlined(stats_x - 10, stats_y - 10, 280, 500,
+    draw_rect_outlined(stats_x - 10, stats_y - 10, 300, 500,
                       COLOR_STATS_BG, (Color){0.3f, 0.3f, 0.4f});
     
+    // Header
     set_color((Color){0.6f, 1.0f, 1.0f});
     draw_text_large(stats_x + 10, stats_y, "STATISTICS");
-    stats_y += 35;
+    stats_y += 30;
     
+    // Time and status
     int elapsed = (int)difftime(time(NULL), simulation_start_time);
     set_color(COLOR_TEXT);
     char buf[256];
     sprintf(buf, "Time: %d/%ds", elapsed, MAX_SIMULATION_TIME);
     draw_text(stats_x, stats_y, buf);
-    stats_y += 25;
+    stats_y += 20;
     
     if (simulation_running) {
         set_color((Color){0.3f, 1.0f, 0.3f});
@@ -966,96 +1117,203 @@ void display() {
         set_color((Color){1.0f, 0.3f, 0.3f});
         draw_text(stats_x, stats_y, "Status: ENDED");
     }
-    stats_y += 30;
+    stats_y += 20;
     
     set_color(COLOR_TEXT);
     sprintf(buf, "Withdrawn: %d/%d", withdrawn_families, WITHDRAWAL_THRESHOLD);
     draw_text(stats_x, stats_y, buf);
-    stats_y += 35;
+    stats_y += 30;
     
+    // ============================================
+    // FAMILIES SECTION (COMPACT FORMAT)
+    // ============================================
     set_color((Color){0.4f, 1.0f, 0.4f});
     draw_text_large(stats_x + 20, stats_y, "FAMILIES");
-    stats_y += 25;
+    stats_y += 22;
     
     for (int i = 0; i < NUM_MALE_APES; i++) {
+        // Overflow check
+        if (stats_y > stats_max_y) {
+            set_color((Color){1.0f, 0.7f, 0.3f});
+            draw_text(stats_x, stats_y, "... (more below)");
+            break;
+        }
+        
+        // Family color indicator
         Color family_color = FAMILY_COLORS[i % 8];
         set_color(family_color);
-        draw_rect(stats_x - 5, stats_y - 5, 15, 15);
+        draw_rect(stats_x - 5, stats_y - 5, 12, 12);
         
+        // Family status color
         if (male_apes[i].active) {
             set_color(COLOR_ACTIVE);
         } else {
             set_color(COLOR_INACTIVE);
         }
-        sprintf(buf, "Fam %d:", i);
-        draw_text(stats_x + 15, stats_y, buf);
-        stats_y += 18;
         
-        set_color((Color){0.7f, 0.7f, 0.9f});
-        sprintf(buf, "  Base: (%d,%d)", family_bases[i].x, family_bases[i].y);
-        draw_text(stats_x + 5, stats_y, buf);
+        // Family header - COMPACT
+        sprintf(buf, "F%d @(%d,%d)", i, family_bases[i].x, family_bases[i].y);
+        draw_text(stats_x + 12, stats_y, buf);
         stats_y += 16;
         
+        // Male stats - COMPACT (Bananas & Energy on one line)
         set_color(COLOR_TEXT);
-        sprintf(buf, "  Bananas: %d", male_apes[i].basket->bananas);
+        sprintf(buf, " M: B:%d E:%d/%d", 
+                male_apes[i].basket->bananas, 
+                male_apes[i].energy,
+                MALE_ENERGY_MAX);
         draw_text(stats_x + 5, stats_y, buf);
-        stats_y += 16;
+        stats_y += 15;
         
-        sprintf(buf, "  Energy: %d", male_apes[i].energy);
-        draw_text(stats_x + 5, stats_y, buf);
-        stats_y += 16;
+        // Male energy bar (mini)
+        float male_bar_x = stats_x + 5;
+        float male_bar_y = stats_y;
+        float male_bar_w = 80;
+        float male_bar_h = 3;
         
+        glColor3f(0.2f, 0.2f, 0.2f);
+        draw_rect(male_bar_x, male_bar_y, male_bar_w, male_bar_h);
+        
+        float male_energy_ratio = (float)male_apes[i].energy / MALE_ENERGY_MAX;
+        if (male_energy_ratio > 0.5f) {
+            glColor3f(0.2f, 0.8f, 0.2f);
+        } else if (male_energy_ratio > 0.25f) {
+            glColor3f(0.9f, 0.7f, 0.2f);
+        } else {
+            glColor3f(0.9f, 0.2f, 0.2f);
+        }
+        draw_rect(male_bar_x, male_bar_y, male_bar_w * male_energy_ratio, male_bar_h);
+        stats_y += 8;
+        
+        // Female stats - COMPACT
         for (int f = 0; f < NUM_FEMALE_APES; f++) {
             if (female_apes[f].family_id == i && female_apes[f].active) {
-                char state = 'S';
-                if (female_apes[f].resting) state = 'R';
-                else if (female_apes[f].collected_bananas >= BANANAS_TO_COLLECT) state = 'H';
-                else if (female_apes[f].collected_bananas > 0) state = 'C';
+                char state_char = 'S'; // Searching
+                Color state_color = COLOR_SEARCHING;
                 
-                sprintf(buf, "  F%d: %c(%d)", f, state, female_apes[f].energy);
+                if (female_apes[f].resting) {
+                    state_char = 'R'; // Resting
+                    state_color = COLOR_RESTING;
+                } else if (female_apes[f].collected_bananas >= BANANAS_TO_COLLECT) {
+                    state_char = 'H'; // Home
+                    state_color = COLOR_RETURNING;
+                } else if (female_apes[f].collected_bananas > 0) {
+                    state_char = 'C'; // Collecting
+                    state_color = COLOR_COLLECTING;
+                }
+                
+                set_color(state_color);
+                sprintf(buf, " F%d:%c B:%d E:%d/%d", 
+                        f, state_char,
+                        female_apes[f].collected_bananas,
+                        female_apes[f].energy,
+                        FEMALE_ENERGY_MAX);
                 draw_text(stats_x + 5, stats_y, buf);
-                stats_y += 16;
-                break;
+                stats_y += 15;
+                
+                // Female energy bar (mini)
+                float female_bar_x = stats_x + 5;
+                float female_bar_y = stats_y;
+                float female_bar_w = 80;
+                float female_bar_h = 3;
+                
+                glColor3f(0.2f, 0.2f, 0.2f);
+                draw_rect(female_bar_x, female_bar_y, female_bar_w, female_bar_h);
+                
+                float female_energy_ratio = (float)female_apes[f].energy / FEMALE_ENERGY_MAX;
+                if (female_energy_ratio > 0.5f) {
+                    glColor3f(0.2f, 0.8f, 0.2f);
+                } else if (female_energy_ratio > 0.25f) {
+                    glColor3f(0.9f, 0.7f, 0.2f);
+                } else {
+                    glColor3f(0.9f, 0.2f, 0.2f);
+                }
+                draw_rect(female_bar_x, female_bar_y, female_bar_w * female_energy_ratio, female_bar_h);
+                stats_y += 8;
+                
+                break; // Only show one female per family
             }
         }
         
+        // Fighting indicator
         if (male_apes[i].fighting) {
             set_color(COLOR_FIGHTING);
-            draw_text(stats_x + 5, stats_y, "  [FIGHTING!]");
+            draw_text(stats_x + 5, stats_y, " [FIGHTING!]");
+            stats_y += 14;
+        }
+        
+        stats_y += 6; // Small gap between families
+    }
+    
+    // ============================================
+    // BABIES SECTION (COMPACT)
+    // ============================================
+    stats_y += 8;
+    
+    // Overflow check before babies section
+    if (stats_y <= stats_max_y) {
+        set_color((Color){1.0f, 0.8f, 0.4f});
+        draw_text_large(stats_x + 30, stats_y, "BABIES");
+        stats_y += 20;
+        
+        for (int i = 0; i < NUM_BABY_APES; i++) {
+            if (!baby_apes[i].active) continue;
+            
+            // Overflow check
+            if (stats_y > stats_max_y) {
+                set_color((Color){1.0f, 0.7f, 0.3f});
+                draw_text(stats_x, stats_y, "...");
+                break;
+            }
+            
+            // Baby color indicator
+            Color family_color = FAMILY_COLORS[baby_apes[i].family_id % 8];
+            set_color_bright(family_color, 0.8f);
+            draw_rect(stats_x - 5, stats_y - 5, 10, 10);
+            
+            // Baby status
+            if (baby_apes[i].stealing) {
+                set_color(COLOR_STEALING);
+            } else {
+                set_color(COLOR_TEXT);
+            }
+            
+            sprintf(buf, "B%d(F%d): ate %d/%d", 
+                    i, baby_apes[i].family_id,
+                    baby_apes[i].eaten_bananas,
+                    BABY_EATEN_THRESHOLD);
+            draw_text(stats_x + 8, stats_y, buf);
             stats_y += 16;
-            set_color(COLOR_TEXT);
         }
-        
-        stats_y += 8;
     }
     
-    stats_y += 5;
-    set_color((Color){1.0f, 0.8f, 0.4f});
-    draw_text_large(stats_x + 30, stats_y, "BABIES");
-    stats_y += 25;
-    
-    for (int i = 0; i < NUM_BABY_APES; i++) {
-        if (!baby_apes[i].active) continue;
+    // ============================================
+    // LEGEND & CONTROLS
+    // ============================================
+    stats_y += 15;
+    if (stats_y <= stats_max_y - 60) {
+        set_color((Color){0.5f, 0.5f, 0.6f});
+        draw_text(stats_x, stats_y, "Legend:");
+        stats_y += 15;
         
-        Color family_color = FAMILY_COLORS[baby_apes[i].family_id % 8];
-        set_color_bright(family_color, 0.8f);
-        draw_rect(stats_x - 5, stats_y - 5, 12, 12);
+        set_color((Color){0.6f, 0.6f, 0.7f});
+        draw_text(stats_x, stats_y, "S=Search C=Collect");
+        stats_y += 12;
+        draw_text(stats_x, stats_y, "H=Home R=Rest");
+        stats_y += 12;
+        draw_text(stats_x, stats_y, "M=Male F=Female");
+        stats_y += 12;
+        draw_text(stats_x, stats_y, "B=Bananas E=Energy");
+        stats_y += 20;
         
-        if (baby_apes[i].stealing) {
-            set_color(COLOR_STEALING);
-        } else {
-            set_color(COLOR_TEXT);
-        }
-        sprintf(buf, "B%d: %d eaten", i, baby_apes[i].eaten_bananas);
-        draw_text(stats_x + 10, stats_y, buf);
-        stats_y += 18;
+        set_color((Color){0.7f, 0.7f, 1.0f});
+        draw_text(stats_x, stats_y, "Press Q or ESC to quit");
     }
     
+    // ============================================
+    // POPUPS (Event notifications)
+    // ============================================
     draw_popups();
-    
-    stats_y += 20;
-    set_color((Color){0.7f, 0.7f, 1.0f});
-    draw_text(stats_x, stats_y, "Press 'Q' or ESC to quit");
     
     pthread_mutex_unlock(&display_lock);
     glutSwapBuffers();
@@ -1193,7 +1451,6 @@ void move_female_to_position(FemaleApe* f, Position target) {
         f->move_progress = (float)step / animation_steps;
         pthread_mutex_unlock(&display_lock);
         
-        // Use usleep for microsecond delays
         usleep(80000);
     }
     
@@ -1805,15 +2062,112 @@ void* female_ape_function(void* arg) {
         }
         
         // Return to base if not already there
-        if (current.x != f->family_base.x || current.y != f->family_base.y) {
+        // Replace the instant teleport with gradual pathfinding
+if (current.x != f->family_base.x || current.y != f->family_base.y) {
+    // Return home step by step
+    while (current.x != f->family_base.x || current.y != f->family_base.y) {
+        Position neighbors[8];
+        int neighbor_count = get_neighbors(current.x, current.y, neighbors);
+        
+        if (neighbor_count > 0) {
+            // Find neighbor closest to base
+            Position best = neighbors[0];
+            int min_dist = abs(best.x - f->family_base.x) + abs(best.y - f->family_base.y);
+            
+            for (int i = 1; i < neighbor_count; i++) {
+                int dist = abs(neighbors[i].x - f->family_base.x) + 
+                          abs(neighbors[i].y - f->family_base.y);
+                if (dist < min_dist) {
+                    min_dist = dist;
+                    best = neighbors[i];
+                }
+            }
+            
+            // CHECK FOR FEMALE ENCOUNTER HERE
+            pthread_mutex_lock(&display_lock);
+            int other_female_id = maze.cells[best.x][best.y].female_id;
+            pthread_mutex_unlock(&display_lock);
+            
+            if (other_female_id >= 0 && other_female_id != f->id &&
+                female_apes[other_female_id].active &&
+                female_apes[other_female_id].collected_bananas > 0 &&
+                rand() % 100 < FEMALE_FIGHT_PROBABILITY) {
+                
+                // FIGHT LOGIC HERE
+                pthread_mutex_lock(&print_lock);
+                printf("Female %d encountered Female %d at (%d,%d)! FIGHT!\n",
+                       f->id, other_female_id, best.x, best.y);
+                pthread_mutex_unlock(&print_lock);
+                
+                float maze_x = 30, maze_y = 80;
+                float cell_size = (float)MAZE_DISPLAY_SIZE / MAZE_SIZE;
+                float screen_x = maze_x + best.y * cell_size + cell_size/2;
+                float screen_y = maze_y + best.x * cell_size + cell_size/2;
+                
+                pthread_mutex_lock(&display_lock);
+                fight_effect_active = true;
+                fight_location.x = best.x;
+                fight_location.y = best.y;
+                fight_effect_timer = 60;
+                pthread_mutex_unlock(&display_lock);
+                
+                add_popup("FEMALE FIGHT!", screen_x - 25, screen_y - 30, 2000);
+                
+                // Both lose energy
+                f->energy -= 20;
+                female_apes[other_female_id].energy -= 20;
+                if (f->energy < 0) f->energy = 0;
+                if (female_apes[other_female_id].energy < 0) 
+                    female_apes[other_female_id].energy = 0;
+                
+                // Fight outcome
+                int total_bananas = f->collected_bananas + 
+                                   female_apes[other_female_id].collected_bananas;
+                float my_chance = (f->collected_bananas * 100.0f) / total_bananas;
+                
+                if (rand() % 100 < my_chance) {
+                    // I win
+                    collected += female_apes[other_female_id].collected_bananas;
+                    f->collected_bananas = collected;
+                    female_apes[other_female_id].collected_bananas = 0;
+                    
+                    pthread_mutex_lock(&print_lock);
+                    printf("  -> Female %d WON! Stole %d bananas\n", 
+                           f->id, female_apes[other_female_id].collected_bananas);
+                    pthread_mutex_unlock(&print_lock);
+                    add_popup("WON FIGHT!", screen_x - 20, screen_y + 20, 1500);
+                } else {
+                    // I lose
+                    female_apes[other_female_id].collected_bananas += collected;
+                    collected = 0;
+                    f->collected_bananas = 0;
+                    
+                    pthread_mutex_lock(&print_lock);
+                    printf("  -> Female %d LOST! Lost %d bananas\n", f->id, collected);
+                    pthread_mutex_unlock(&print_lock);
+                    add_popup("LOST FIGHT!", screen_x - 25, screen_y + 20, 1500);
+                }
+                
+                sleep(1);
+            }
+            
+            // Move to next cell
             pthread_mutex_lock(&display_lock);
             if (current.x >= 0 && current.y >= 0) {
                 maze.cells[current.x][current.y].female_id = -1;
             }
             pthread_mutex_unlock(&display_lock);
             
-            move_female_to_position(f, f->family_base);
+            move_female_to_position(f, best);
+            current = best;
+            
+            f->energy--; // Energy cost for moving
+            if (f->energy < 0) f->energy = 0;
+        } else {
+            break; // Stuck
         }
+    }
+}
         
         // Now at base - deposit bananas
         pthread_mutex_lock(&print_lock);
@@ -2321,10 +2675,10 @@ void init_apes() {
         female_apes[i].display_pos = female_apes[i].family_base;
         female_apes[i].target_pos.x = -1;
         female_apes[i].target_pos.y = -1;
-        female_apes[i].preferred_direction.x = 0;
-        female_apes[i].preferred_direction.y = 0;
+        female_apes[i].preferred_direction.x = 0;  // ADD THIS
+        female_apes[i].preferred_direction.y = 0;  // ADD THIS
         
-        // Initialize visited cells array
+        // ADD THIS BLOCK INSIDE THE LOOP:
         female_apes[i].visited_cells = malloc(MAZE_SIZE * sizeof(int*));
         for (int x = 0; x < MAZE_SIZE; x++) {
             female_apes[i].visited_cells[x] = malloc(MAZE_SIZE * sizeof(int));
@@ -2333,9 +2687,6 @@ void init_apes() {
             }
         }
         female_apes[i].visit_threshold = 3;
-        female_apes[i].steps_without_bananas = 0;
-        female_apes[i].consecutive_same_cells = 0;
-        female_apes[i].last_pos_index = 0;
     }
     
     for (int i = 0; i < NUM_BABY_APES; i++) {
@@ -2351,7 +2702,46 @@ void init_apes() {
         popups[i].active = false;
     }
 }
-
+Position get_smart_move(FemaleApe* f, Position* neighbors, int neighbor_count) {
+    Position best_move = neighbors[0];
+    float best_score = -1000.0f;
+    
+    for (int i = 0; i < neighbor_count; i++) {
+        Position pos = neighbors[i];
+        float score = 0.0f;
+        
+        // Banana value (highest priority)
+        score += maze.cells[pos.x][pos.y].bananas * 20.0f;
+        
+        // Avoid recently visited cells
+        int visits = f->visited_cells[pos.x][pos.y];
+        score -= visits * 10.0f;
+        
+        // Prefer unexplored areas
+        if (visits == 0) {
+            score += 15.0f;
+        }
+        
+        // When returning home, prioritize moves toward base
+        if (f->collected_bananas >= BANANAS_TO_COLLECT) {
+            int dx = abs(pos.x - f->family_base.x);
+            int dy = abs(pos.y - f->family_base.y);
+            score -= (dx + dy) * 3.0f; // Closer to base is better
+        } else {
+            // When searching, avoid backtracking too much
+            int dx_from_current = abs(pos.x - f->pos.x);
+            int dy_from_current = abs(pos.y - f->pos.y);
+            score += (dx_from_current + dy_from_current) * 0.5f; // Encourage movement
+        }
+        
+        if (score > best_score) {
+            best_score = score;
+            best_move = pos;
+        }
+    }
+    
+    return best_move;
+}
 void start_simulation() {
     printf("\n===================================================\n");
     printf("    APES COLLECTING BANANAS - SIMULATION START    \n");
@@ -2406,15 +2796,6 @@ void cleanup() {
         free(male_apes[i].basket);
     }
     
-    for (int i = 0; i < NUM_FEMALE_APES; i++) {
-        if (female_apes[i].visited_cells != NULL) {
-            for (int x = 0; x < MAZE_SIZE; x++) {
-                free(female_apes[i].visited_cells[x]);
-            }
-            free(female_apes[i].visited_cells);
-        }
-    }
-    
     free(female_apes);
     free(male_apes);
     free(baby_apes);
@@ -2427,8 +2808,6 @@ void cleanup() {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-    (void)x; (void)y; // Mark parameters as unused
-    
     if (key == 27 || key == 'q' || key == 'Q') {
         printf("\n*** Simulation manually terminated by user ***\n");
         simulation_running = false;
