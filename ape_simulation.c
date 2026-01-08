@@ -955,7 +955,7 @@ void display() {
     }
     
     // ============================================
-    // STATISTICS PANEL (RIGHT SIDE) - FIXED SPACING
+    // STATISTICS PANEL (RIGHT SIDE) - PROPERLY SPACED
     // ============================================
     float stats_x = maze_x + MAZE_DISPLAY_SIZE + 20;
     float stats_y = maze_y;
@@ -970,7 +970,7 @@ void display() {
     // Header
     set_color((Color){0.6f, 1.0f, 1.0f});
     draw_text_large(stats_x + 10, stats_y, "STATISTICS");
-    stats_y += 25;
+    stats_y += 28;
     
     // Time and status
     int elapsed = (int)difftime(time(NULL), simulation_start_time);
@@ -978,7 +978,7 @@ void display() {
     char buf[256];
     sprintf(buf, "Time: %d/%ds", elapsed, MAX_SIMULATION_TIME);
     draw_text(stats_x, stats_y, buf);
-    stats_y += 18;
+    stats_y += 20;
     
     if (simulation_running) {
         set_color((Color){0.3f, 1.0f, 0.3f});
@@ -987,32 +987,32 @@ void display() {
         set_color((Color){1.0f, 0.3f, 0.3f});
         draw_text(stats_x, stats_y, "Status: ENDED");
     }
-    stats_y += 18;
+    stats_y += 20;
     
     set_color(COLOR_TEXT);
     sprintf(buf, "Withdrawn: %d/%d", withdrawn_families, WITHDRAWAL_THRESHOLD);
     draw_text(stats_x, stats_y, buf);
-    stats_y += 25;
+    stats_y += 30;
     
     // ============================================
-    // FAMILIES SECTION (FIXED SPACING)
+    // FAMILIES SECTION (PROPERLY SPACED)
     // ============================================
     set_color((Color){0.4f, 1.0f, 0.4f});
     draw_text_large(stats_x + 20, stats_y, "FAMILIES");
-    stats_y += 22;
+    stats_y += 25;
     
     for (int i = 0; i < NUM_MALE_APES; i++) {
-        // Check if we have space
-        if (stats_y > maze_y + panel_height - 80) {
+        // Check if we have space (leave room for babies section)
+        if (stats_y > maze_y + panel_height - 150) {
             set_color((Color){1.0f, 0.7f, 0.3f});
-            draw_text(stats_x, stats_y, "... scroll down");
+            draw_text(stats_x, stats_y, "...");
             break;
         }
         
         // Family color indicator
         Color family_color = FAMILY_COLORS[i % 8];
         set_color(family_color);
-        draw_rect(stats_x - 5, stats_y - 8, 10, 10);
+        draw_rect(stats_x - 5, stats_y - 10, 12, 12);
         
         // Family status color
         if (male_apes[i].active) {
@@ -1023,8 +1023,8 @@ void display() {
         
         // Family header
         sprintf(buf, "F%d @(%d,%d)", i, family_bases[i].x, family_bases[i].y);
-        draw_text(stats_x + 10, stats_y, buf);
-        stats_y += 16;
+        draw_text(stats_x + 12, stats_y, buf);
+        stats_y += 18;
         
         // Male stats
         set_color(COLOR_TEXT);
@@ -1033,13 +1033,13 @@ void display() {
                 male_apes[i].basket->bananas, 
                 male_apes[i].energy);
         draw_text(stats_x + 5, stats_y, buf);
-        stats_y += 14;
+        stats_y += 16;
         
         // Male energy bar
         float male_bar_x = stats_x + 5;
         float male_bar_y = stats_y;
         float male_bar_w = 100;
-        float male_bar_h = 4;
+        float male_bar_h = 5;
         
         glColor3f(0.2f, 0.2f, 0.2f);
         draw_rect(male_bar_x, male_bar_y, male_bar_w, male_bar_h);
@@ -1053,11 +1053,14 @@ void display() {
             glColor3f(0.9f, 0.2f, 0.2f);
         }
         draw_rect(male_bar_x, male_bar_y, male_bar_w * male_energy_ratio, male_bar_h);
-        stats_y += 10;
+        stats_y += 12;
         
-        // Female stats
+        // Female stats - find female for this family
+        bool found_female = false;
         for (int f = 0; f < NUM_FEMALE_APES; f++) {
             if (female_apes[f].family_id == i && female_apes[f].active) {
+                found_female = true;
+                
                 char state_char = 'S';
                 Color state_color = COLOR_SEARCHING;
                 
@@ -1078,13 +1081,13 @@ void display() {
                         female_apes[f].collected_bananas,
                         female_apes[f].energy);
                 draw_text(stats_x + 5, stats_y, buf);
-                stats_y += 14;
+                stats_y += 16;
                 
                 // Female energy bar
                 float female_bar_x = stats_x + 5;
                 float female_bar_y = stats_y;
                 float female_bar_w = 100;
-                float female_bar_h = 4;
+                float female_bar_h = 5;
                 
                 glColor3f(0.2f, 0.2f, 0.2f);
                 draw_rect(female_bar_x, female_bar_y, female_bar_w, female_bar_h);
@@ -1098,36 +1101,41 @@ void display() {
                     glColor3f(0.9f, 0.2f, 0.2f);
                 }
                 draw_rect(female_bar_x, female_bar_y, female_bar_w * female_energy_ratio, female_bar_h);
-                stats_y += 10;
+                stats_y += 12;
                 
                 break; // Only show one female per family
             }
+        }
+        
+        // If no female was found but there should be one
+        if (!found_female) {
+            stats_y += 0; // No extra space needed
         }
         
         // Fighting indicator
         if (male_apes[i].fighting) {
             set_color(COLOR_FIGHTING);
             draw_text(stats_x + 5, stats_y, " [FIGHTING!]");
-            stats_y += 14;
+            stats_y += 16;
         }
         
-        stats_y += 8; // Gap between families
+        stats_y += 10; // Gap between families (increased from 8)
     }
     
     // ============================================
     // BABIES SECTION
     // ============================================
-    stats_y += 10;
+    stats_y += 15;
     
-    if (stats_y <= maze_y + panel_height - 120) {
+    if (stats_y <= maze_y + panel_height - 100) {
         set_color((Color){1.0f, 0.8f, 0.4f});
         draw_text_large(stats_x + 30, stats_y, "BABIES");
-        stats_y += 20;
+        stats_y += 22;
         
         for (int i = 0; i < NUM_BABY_APES; i++) {
             if (!baby_apes[i].active) continue;
             
-            if (stats_y > maze_y + panel_height - 60) {
+            if (stats_y > maze_y + panel_height - 50) {
                 set_color((Color){1.0f, 0.7f, 0.3f});
                 draw_text(stats_x, stats_y, "...");
                 break;
@@ -1136,7 +1144,7 @@ void display() {
             // Baby color indicator
             Color family_color = FAMILY_COLORS[baby_apes[i].family_id % 8];
             set_color_bright(family_color, 0.8f);
-            draw_rect(stats_x - 5, stats_y - 8, 8, 8);
+            draw_rect(stats_x - 5, stats_y - 10, 10, 10);
             
             // Baby status
             if (baby_apes[i].stealing) {
@@ -1149,29 +1157,29 @@ void display() {
                     i, baby_apes[i].family_id,
                     baby_apes[i].eaten_bananas,
                     BABY_EATEN_THRESHOLD);
-            draw_text(stats_x + 5, stats_y, buf);
-            stats_y += 16;
+            draw_text(stats_x + 8, stats_y, buf);
+            stats_y += 18; // Increased spacing
         }
     }
     
     // ============================================
     // LEGEND & CONTROLS
     // ============================================
-    stats_y += 15;
-    if (stats_y <= maze_y + panel_height - 80) {
+    stats_y += 18;
+    if (stats_y <= maze_y + panel_height - 70) {
         set_color((Color){0.5f, 0.5f, 0.6f});
         draw_text(stats_x, stats_y, "Legend:");
-        stats_y += 14;
+        stats_y += 16;
         
         set_color((Color){0.6f, 0.6f, 0.7f});
         draw_text(stats_x, stats_y, "S=Search C=Collect");
-        stats_y += 12;
+        stats_y += 14;
         draw_text(stats_x, stats_y, "H=Home R=Rest");
-        stats_y += 12;
+        stats_y += 14;
         draw_text(stats_x, stats_y, "M=Male F=Female");
-        stats_y += 12;
+        stats_y += 14;
         draw_text(stats_x, stats_y, "B=Bananas E=Energy");
-        stats_y += 18;
+        stats_y += 20;
         
         set_color((Color){0.7f, 0.7f, 1.0f});
         draw_text(stats_x, stats_y, "Press Q or ESC to quit");
