@@ -946,161 +946,31 @@ void display() {
     }
     
     // ============================================
-    // FEMALE APES WITH ENERGY BARS
+    // FEMALE APES
     // ============================================
     for (int i = 0; i < NUM_FEMALE_APES; i++) {
         if (female_apes[i].active && female_apes[i].pos.x >= 0) {
-            FemaleApe* f = &female_apes[i];
-            
-            // Calculate display position
-            float display_x, display_y;
-            if (f->moving) {
-                float start_x = f->display_pos.x;
-                float start_y = f->display_pos.y;
-                float target_x = f->target_pos.x;
-                float target_y = f->target_pos.y;
-                
-                display_x = start_x + (target_x - start_x) * f->move_progress;
-                display_y = start_y + (target_y - start_y) * f->move_progress;
-            } else {
-                display_x = f->pos.x;
-                display_y = f->pos.y;
-            }
-            
-            float screen_x = maze_x + display_y * cell_size + cell_size/2;
-            float screen_y = maze_y + display_x * cell_size + cell_size/2;
-            
-            // Determine color based on state
-            if (f->resting) {
-                float pulse = 0.7f + 0.3f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.005f);
-                set_family_color(f->family_id, pulse);
-            } else if (f->collected_bananas >= BANANAS_TO_COLLECT) {
-                set_family_color(f->family_id, 1.3f);
-            } else if (f->collected_bananas > 0) {
-                float progress = (float)f->collected_bananas / BANANAS_TO_COLLECT;
-                set_family_color(f->family_id, 0.8f + 0.5f * progress);
-            } else {
-                set_family_color(f->family_id, 1.0f);
-            }
-            
-            // Draw ape body
-            float ape_size = cell_size * 0.35f;
-            if (f->moving) {
-                float squash = 0.9f + 0.1f * sin(f->move_progress * 3.14159f);
-                draw_circle_outlined(screen_x, screen_y, ape_size * squash, f->family_id);
-                
-                // Movement direction indicator
-                if (f->move_progress > 0.1f && f->move_progress < 0.9f) {
-                    float dx = f->target_pos.y - f->display_pos.y;
-                    float dy = f->target_pos.x - f->display_pos.x;
-                    float angle = atan2(dy, dx);
-                    
-                    glColor3f(1, 1, 1);
-                    glBegin(GL_TRIANGLES);
-                    glVertex2f(screen_x + cos(angle) * ape_size*0.8f, 
-                              screen_y + sin(angle) * ape_size*0.8f);
-                    glVertex2f(screen_x + cos(angle + 2.5) * ape_size*0.5f,
-                              screen_y + sin(angle + 2.5) * ape_size*0.5f);
-                    glVertex2f(screen_x + cos(angle - 2.5) * ape_size*0.5f,
-                              screen_y + sin(angle - 2.5) * ape_size*0.5f);
-                    glEnd();
-                }
-            } else {
-                draw_circle_outlined(screen_x, screen_y, ape_size, f->family_id);
-            }
-            
-            // State icon
-            if (f->resting) {
-                draw_rest_icon(screen_x, screen_y - ape_size - 10, 4);
-            } else if (f->collected_bananas >= BANANAS_TO_COLLECT) {
-                draw_home_icon(screen_x, screen_y - ape_size - 10, 6);
-            } else if (f->collected_bananas > 0) {
-                draw_search_icon(screen_x, screen_y - ape_size - 10, 4);
-            }
-            
-            // Target indicator (when moving)
-            if (f->moving && f->target_pos.x >= 0 && f->move_progress < 0.9f) {
-                float target_screen_x = maze_x + f->target_pos.y * cell_size + cell_size/2;
-                float target_screen_y = maze_y + f->target_pos.x * cell_size + cell_size/2;
-                
-                glColor4f(1, 1, 1, 0.6f);
-                glLineWidth(1.5f);
-                glBegin(GL_LINES);
-                glVertex2f(screen_x, screen_y);
-                glVertex2f(target_screen_x, target_screen_y);
-                glEnd();
-                
-                glColor4f(1, 1, 1, 0.3f);
-                draw_rect(maze_x + f->target_pos.y * cell_size + 2,
-                          maze_y + f->target_pos.x * cell_size + 2,
-                          cell_size - 4, cell_size - 4);
-            }
-            
-            // ID label
-            glColor3f(1, 1, 1);
-            char id_text[20];
-            sprintf(id_text, "F%d", f->id);
-            draw_text(screen_x - 6, screen_y + 5, id_text);
-            
-            // Banana count
-            if (f->collected_bananas > 0) {
-                glColor3f(1, 0.9f, 0);
-                char banana_text[10];
-                sprintf(banana_text, "%d", f->collected_bananas);
-                draw_text(screen_x - 4, screen_y - 15, banana_text);
-            }
-            
-            // ============================================
-            // ENERGY BAR (NEW!)
-            // ============================================
-            float bar_width = cell_size * 0.7f;
-            float bar_height = 4.0f;
-            float bar_x = screen_x - bar_width/2;
-            float bar_y = screen_y + ape_size + 8;
-            
-            // Background (empty bar)
-            glColor3f(0.2f, 0.2f, 0.2f);
-            draw_rect(bar_x, bar_y, bar_width, bar_height);
-            
-            // Foreground (energy level)
-            float energy_ratio = (float)f->energy / FEMALE_ENERGY_MAX;
-            if (energy_ratio > 0.6f) {
-                glColor3f(0.2f, 1.0f, 0.2f); // Green (healthy)
-            } else if (energy_ratio > 0.3f) {
-                glColor3f(1.0f, 0.9f, 0.2f); // Yellow (warning)
-            } else {
-                glColor3f(1.0f, 0.2f, 0.2f); // Red (critical)
-            }
-            draw_rect(bar_x, bar_y, bar_width * energy_ratio, bar_height);
-            
-            // Border
-            glColor3f(0.6f, 0.6f, 0.6f);
-            glLineWidth(1.0f);
-            glBegin(GL_LINE_LOOP);
-            glVertex2f(bar_x, bar_y);
-            glVertex2f(bar_x + bar_width, bar_y);
-            glVertex2f(bar_x + bar_width, bar_y + bar_height);
-            glVertex2f(bar_x, bar_y + bar_height);
-            glEnd();
+            draw_female_ape(&female_apes[i], maze_x, maze_y, cell_size);
         }
     }
     
     // ============================================
-    // STATISTICS PANEL (RIGHT SIDE)
+    // STATISTICS PANEL (RIGHT SIDE) - FIXED SPACING
     // ============================================
     float stats_x = maze_x + MAZE_DISPLAY_SIZE + 20;
     float stats_y = maze_y;
-    float stats_max_y = WINDOW_HEIGHT - 50; // Overflow protection
+    float panel_width = 300;
+    float panel_height = WINDOW_HEIGHT - maze_y - 20;
     
     // Panel background
     set_color(COLOR_STATS_BG);
-    draw_rect_outlined(stats_x - 10, stats_y - 10, 300, 500,
+    draw_rect_outlined(stats_x - 10, stats_y - 10, panel_width, panel_height,
                       COLOR_STATS_BG, (Color){0.3f, 0.3f, 0.4f});
     
     // Header
     set_color((Color){0.6f, 1.0f, 1.0f});
     draw_text_large(stats_x + 10, stats_y, "STATISTICS");
-    stats_y += 30;
+    stats_y += 25;
     
     // Time and status
     int elapsed = (int)difftime(time(NULL), simulation_start_time);
@@ -1108,7 +978,7 @@ void display() {
     char buf[256];
     sprintf(buf, "Time: %d/%ds", elapsed, MAX_SIMULATION_TIME);
     draw_text(stats_x, stats_y, buf);
-    stats_y += 20;
+    stats_y += 18;
     
     if (simulation_running) {
         set_color((Color){0.3f, 1.0f, 0.3f});
@@ -1117,32 +987,32 @@ void display() {
         set_color((Color){1.0f, 0.3f, 0.3f});
         draw_text(stats_x, stats_y, "Status: ENDED");
     }
-    stats_y += 20;
+    stats_y += 18;
     
     set_color(COLOR_TEXT);
     sprintf(buf, "Withdrawn: %d/%d", withdrawn_families, WITHDRAWAL_THRESHOLD);
     draw_text(stats_x, stats_y, buf);
-    stats_y += 30;
+    stats_y += 25;
     
     // ============================================
-    // FAMILIES SECTION (COMPACT FORMAT)
+    // FAMILIES SECTION (FIXED SPACING)
     // ============================================
     set_color((Color){0.4f, 1.0f, 0.4f});
     draw_text_large(stats_x + 20, stats_y, "FAMILIES");
     stats_y += 22;
     
     for (int i = 0; i < NUM_MALE_APES; i++) {
-        // Overflow check
-        if (stats_y > stats_max_y) {
+        // Check if we have space
+        if (stats_y > maze_y + panel_height - 80) {
             set_color((Color){1.0f, 0.7f, 0.3f});
-            draw_text(stats_x, stats_y, "... (more below)");
+            draw_text(stats_x, stats_y, "... scroll down");
             break;
         }
         
         // Family color indicator
         Color family_color = FAMILY_COLORS[i % 8];
         set_color(family_color);
-        draw_rect(stats_x - 5, stats_y - 5, 12, 12);
+        draw_rect(stats_x - 5, stats_y - 8, 10, 10);
         
         // Family status color
         if (male_apes[i].active) {
@@ -1151,25 +1021,25 @@ void display() {
             set_color(COLOR_INACTIVE);
         }
         
-        // Family header - COMPACT
+        // Family header
         sprintf(buf, "F%d @(%d,%d)", i, family_bases[i].x, family_bases[i].y);
-        draw_text(stats_x + 12, stats_y, buf);
+        draw_text(stats_x + 10, stats_y, buf);
         stats_y += 16;
         
-        // Male stats - COMPACT (Bananas & Energy on one line)
+        // Male stats
         set_color(COLOR_TEXT);
-        sprintf(buf, " M: B:%d E:%d/%d", 
+        sprintf(buf, " M%d: B:%d E:%d", 
+                i,
                 male_apes[i].basket->bananas, 
-                male_apes[i].energy,
-                MALE_ENERGY_MAX);
+                male_apes[i].energy);
         draw_text(stats_x + 5, stats_y, buf);
-        stats_y += 15;
+        stats_y += 14;
         
-        // Male energy bar (mini)
+        // Male energy bar
         float male_bar_x = stats_x + 5;
         float male_bar_y = stats_y;
-        float male_bar_w = 80;
-        float male_bar_h = 3;
+        float male_bar_w = 100;
+        float male_bar_h = 4;
         
         glColor3f(0.2f, 0.2f, 0.2f);
         draw_rect(male_bar_x, male_bar_y, male_bar_w, male_bar_h);
@@ -1183,39 +1053,38 @@ void display() {
             glColor3f(0.9f, 0.2f, 0.2f);
         }
         draw_rect(male_bar_x, male_bar_y, male_bar_w * male_energy_ratio, male_bar_h);
-        stats_y += 8;
+        stats_y += 10;
         
-        // Female stats - COMPACT
+        // Female stats
         for (int f = 0; f < NUM_FEMALE_APES; f++) {
             if (female_apes[f].family_id == i && female_apes[f].active) {
-                char state_char = 'S'; // Searching
+                char state_char = 'S';
                 Color state_color = COLOR_SEARCHING;
                 
                 if (female_apes[f].resting) {
-                    state_char = 'R'; // Resting
+                    state_char = 'R';
                     state_color = COLOR_RESTING;
                 } else if (female_apes[f].collected_bananas >= BANANAS_TO_COLLECT) {
-                    state_char = 'H'; // Home
+                    state_char = 'H';
                     state_color = COLOR_RETURNING;
                 } else if (female_apes[f].collected_bananas > 0) {
-                    state_char = 'C'; // Collecting
+                    state_char = 'C';
                     state_color = COLOR_COLLECTING;
                 }
                 
                 set_color(state_color);
-                sprintf(buf, " F%d:%c B:%d E:%d/%d", 
+                sprintf(buf, " F%d:%c B:%d E:%d", 
                         f, state_char,
                         female_apes[f].collected_bananas,
-                        female_apes[f].energy,
-                        FEMALE_ENERGY_MAX);
+                        female_apes[f].energy);
                 draw_text(stats_x + 5, stats_y, buf);
-                stats_y += 15;
+                stats_y += 14;
                 
-                // Female energy bar (mini)
+                // Female energy bar
                 float female_bar_x = stats_x + 5;
                 float female_bar_y = stats_y;
-                float female_bar_w = 80;
-                float female_bar_h = 3;
+                float female_bar_w = 100;
+                float female_bar_h = 4;
                 
                 glColor3f(0.2f, 0.2f, 0.2f);
                 draw_rect(female_bar_x, female_bar_y, female_bar_w, female_bar_h);
@@ -1229,7 +1098,7 @@ void display() {
                     glColor3f(0.9f, 0.2f, 0.2f);
                 }
                 draw_rect(female_bar_x, female_bar_y, female_bar_w * female_energy_ratio, female_bar_h);
-                stats_y += 8;
+                stats_y += 10;
                 
                 break; // Only show one female per family
             }
@@ -1242,16 +1111,15 @@ void display() {
             stats_y += 14;
         }
         
-        stats_y += 6; // Small gap between families
+        stats_y += 8; // Gap between families
     }
     
     // ============================================
-    // BABIES SECTION (COMPACT)
+    // BABIES SECTION
     // ============================================
-    stats_y += 8;
+    stats_y += 10;
     
-    // Overflow check before babies section
-    if (stats_y <= stats_max_y) {
+    if (stats_y <= maze_y + panel_height - 120) {
         set_color((Color){1.0f, 0.8f, 0.4f});
         draw_text_large(stats_x + 30, stats_y, "BABIES");
         stats_y += 20;
@@ -1259,8 +1127,7 @@ void display() {
         for (int i = 0; i < NUM_BABY_APES; i++) {
             if (!baby_apes[i].active) continue;
             
-            // Overflow check
-            if (stats_y > stats_max_y) {
+            if (stats_y > maze_y + panel_height - 60) {
                 set_color((Color){1.0f, 0.7f, 0.3f});
                 draw_text(stats_x, stats_y, "...");
                 break;
@@ -1269,7 +1136,7 @@ void display() {
             // Baby color indicator
             Color family_color = FAMILY_COLORS[baby_apes[i].family_id % 8];
             set_color_bright(family_color, 0.8f);
-            draw_rect(stats_x - 5, stats_y - 5, 10, 10);
+            draw_rect(stats_x - 5, stats_y - 8, 8, 8);
             
             // Baby status
             if (baby_apes[i].stealing) {
@@ -1278,11 +1145,11 @@ void display() {
                 set_color(COLOR_TEXT);
             }
             
-            sprintf(buf, "B%d(F%d): ate %d/%d", 
+            sprintf(buf, "B%d(F%d): %d/%d", 
                     i, baby_apes[i].family_id,
                     baby_apes[i].eaten_bananas,
                     BABY_EATEN_THRESHOLD);
-            draw_text(stats_x + 8, stats_y, buf);
+            draw_text(stats_x + 5, stats_y, buf);
             stats_y += 16;
         }
     }
@@ -1291,10 +1158,10 @@ void display() {
     // LEGEND & CONTROLS
     // ============================================
     stats_y += 15;
-    if (stats_y <= stats_max_y - 60) {
+    if (stats_y <= maze_y + panel_height - 80) {
         set_color((Color){0.5f, 0.5f, 0.6f});
         draw_text(stats_x, stats_y, "Legend:");
-        stats_y += 15;
+        stats_y += 14;
         
         set_color((Color){0.6f, 0.6f, 0.7f});
         draw_text(stats_x, stats_y, "S=Search C=Collect");
@@ -1304,14 +1171,14 @@ void display() {
         draw_text(stats_x, stats_y, "M=Male F=Female");
         stats_y += 12;
         draw_text(stats_x, stats_y, "B=Bananas E=Energy");
-        stats_y += 20;
+        stats_y += 18;
         
         set_color((Color){0.7f, 0.7f, 1.0f});
         draw_text(stats_x, stats_y, "Press Q or ESC to quit");
     }
     
     // ============================================
-    // POPUPS (Event notifications)
+    // POPUPS
     // ============================================
     draw_popups();
     
